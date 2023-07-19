@@ -1,3 +1,4 @@
+const path = require("path");
 const ErrorResponse = require("../utils/errorResponse");
 const asyncHandler = require("../middleware/async");
 const geocoder = require("../utils/geocoder");
@@ -7,63 +8,14 @@ const Bootcamp = require("../models/Bootcamp");
 // @route GET /api/v1/bootcamps
 // @access Public
 exports.getBootcamps = asyncHandler(async (req, res, next) => {
-  let query;
-  //copu req.query
-  const reqQuery = { ...req.query };
-
-  //fields to exclude
-  const removeFields = ["select", "sort", "page", "limit"];
-
-  //remove fields form request
-  removeFields.forEach((param) => delete reqQuery[param]);
-
-  let queryStr = JSON.stringify(reqQuery);
-  console.log(queryStr);
-
-  //Create perators like $gt, $gte etc
-  queryStr = queryStr.replace(
-    /\b(gt|gte|lt|lte|in)\b/g,
-    (match) => `$${match}`
-  );
-
-  query = Bootcamp.find(JSON.parse(queryStr));
-
-  //select fields
-  if (req.query.select) {
-    const fields = req.query.select.split(",").join(" ");
-    query = query.select(fields);
-  }
-
-  //sort
-  if (req.query.sort) {
-    const sortBy = req.query.sort.split(",").join(" ");
-    query = query.sort(sortBy);
-  } else {
-    query.sort = query.sort("-createdAt");
-  }
-  //pagination
-  const page = parseInt(req.query.page, 10) || 1;
-  const limit = parseInt(req.query.limit, 10) || 100;
-
-  const startIndex = (page - 1) * limit;
-  const endIndex = page * limit;
-  const total = Bootcamp.countDocuments();
-
-  query = query.skip(startIndex).limit(limit);
-
-  const bootcamps = await query;
-  res.status(200).json({
-    success: true,
-    count: bootcamps.length,
-    data: bootcamps,
-  });
+  res.status(200).json(res.advancedResults);
 });
 
 // @desc Get Get a bootcamp
 // @route GET /api/v1/bootcamps/:id
 // @access Public
 exports.getBootcamp = asyncHandler(async (req, res, next) => {
-  const bootcamp = await Bootcamp.findById(req.params.id);
+  const bootcamp = await Bootcamp.findById(req.params.id).populate("courses");
 
   if (!bootcamp) {
     return next(
@@ -106,13 +58,16 @@ exports.updateBootcamp = asyncHandler(async (req, res, next) => {
 // @route DELETE /api/v1/bootcamps/:id
 // @access Private
 exports.deleteBootcamp = asyncHandler(async (req, res, next) => {
-  const bootcamp = await Bootcamp.findByIdAndDelete(req.params.id);
+  const bootcamp = await Bootcamp.findById(req.params.id);
 
   if (!bootcamp) {
     return next(
       new ErrorResponse(`Bootcamp with id ${req.params.id} not found`, 404)
     );
   }
+
+  await Bootcamp.deleteOne({ _id: req.params.id });
+
   res.status(200).json({ success: true });
 });
 
@@ -142,4 +97,51 @@ exports.getBootcampsInRadius = asyncHandler(async (req, res, next) => {
     count: bootcamps.length,
     data: bootcamps,
   });
+});
+
+// @desc  Upload photo for a bootcamp
+// @route DELETE /api/v1/bootcamps/:id/photo
+// @access Private
+exports.bootcampPhotoUpload = asyncHandler(async (req, res, next) => {
+  const bootcamp = await Bootcamp.findById(req.params.id);
+
+  if (!bootcamp) {
+    return next(
+      new ErrorResponse(`Bootcamp with id ${req.params.id} not found`, 404)
+    );
+  }
+
+  if (!req.files) {
+    return next(new ErrorResponse(`Please upload a photo`, 400));
+  }
+
+  const file = req.files.file;
+  //Make sure the image is a photo
+  if (!file.mimetype.startsWith("image")) {
+    return next(new ErrorResponse(`Please upload an image file`, 400));
+  }
+
+  //Check file size
+  if (file.size > process.env.MAX_FILE_UPLOAD) {
+    return next(
+      new ErrorResponse(
+        `Please upload a photo less than ${process.env.MAX_FILE_UPLOAD}`,
+        400
+      )
+    );
+  }
+
+  //Create a custom file name. use the path module to get the file extension
+  file.name = `photo_${bootcamp._id}${path.parse(file.name).ext}`;
+
+  file.mv(`${process.env.FILE_UPLOAD_PATH}/${file.name}`, async (err) => {
+    if (err) {
+      console.error(err);
+      return next(new ErrorResponse(`Error with file upload`, 400));
+    }
+
+    await Bootcamp.findByIdAndUpdate(req.params.id, { photo: file.name });
+  });
+
+  res.status(200).json({ success: true, data: file.name });
 });
