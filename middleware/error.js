@@ -15,6 +15,7 @@ const errorHandler = (err, req, res, next) => {
     const message = `Duplicate value entered`;
     error = new ErrorResponse(message, 400);
   }
+
   //Mongoose validation error
   if (err.name === "ValidationError") {
     const msg = Object.values(err.errors).map((val) => val.message);
