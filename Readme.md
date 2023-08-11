@@ -1,4 +1,4 @@
-# HaHu Bootcamp API
+# Yene Bootcamp API
 
 > Backend API for HaHu application, which is a bootcamp directory website
 
@@ -26,5 +26,3 @@ npm start
 
 - Version 1.0.0
 - License
-
- 
